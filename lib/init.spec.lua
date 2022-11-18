@@ -5,6 +5,11 @@ return function()
 	local timeEvent = Instance.new("BindableEvent")
 	Promise._timeEvent = timeEvent.Event
 
+	local function waitForEvents()
+		task.defer(coroutine.running())
+		coroutine.yield()
+	end
+
 	local advanceTime do
 		local injectedPromiseTime = 0
 
@@ -17,6 +22,7 @@ return function()
 
 			injectedPromiseTime = injectedPromiseTime + delta
 			timeEvent:Fire(delta)
+			waitForEvents()
 		end
 	end
 
@@ -157,6 +163,9 @@ return function()
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
 			bindable:Fire()
+
+			waitForEvents()
+
 			expect(promise:getStatus()).to.equal(Promise.Status.Resolved)
 			expect(promise._values[1]).to.equal(5)
 		end)
@@ -306,6 +315,7 @@ return function()
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
 			bindable:Fire()
+			waitForEvents()
 			expect(promise:getStatus()).to.equal(Promise.Status.Resolved)
 			expect(promise._values[1]).to.equal(5)
 		end)
@@ -1009,6 +1019,7 @@ return function()
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
 			bindable:Fire()
+			waitForEvents()
 			expect(promise:getStatus()).to.equal(Promise.Status.Rejected)
 			expect(tostring(promise._values[1]):find("errortext")).to.be.ok()
 		end)
@@ -1088,6 +1099,7 @@ return function()
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
 			bindable:Fire()
+			waitForEvents()
 			expect(promise:getStatus()).to.equal(Promise.Status.Rejected)
 			expect(tostring(promise._values[1]):find("errortext")).to.be.ok()
 		end)
@@ -1594,6 +1606,7 @@ return function()
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
 
 			event:Fire("foo")
+			waitForEvents()
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Resolved)
 			expect(promise._values[1]).to.equal("foo")
@@ -1609,10 +1622,12 @@ return function()
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
 
 			event:Fire("bar")
+			waitForEvents()
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
 
 			event:Fire("foo")
+			waitForEvents()
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Resolved)
 			expect(promise._values[1]).to.equal("foo")
