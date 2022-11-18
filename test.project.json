@@ -8,11 +8,8 @@
 				"$path": "lib"
 			}
 		},
-		"TestService": {
-			"$className": "TestService",
-			"$properties": {
-				"ExecuteWithStudioRun": true
-			},
+		"Workspace": {
+			"$className": "Workspace",
 			"TestEZ": {
 				"$path": "modules/testez/src"
 			},
