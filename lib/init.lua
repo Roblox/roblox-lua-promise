@@ -1109,12 +1109,10 @@ function Promise.prototype:awaitStatus()
 	self._unhandledRejection = false
 
 	if self._status == Promise.Status.Started then
-		local currentCoroutine = coroutine.running()
+		local thread = coroutine.running()
 
 		self:finally(function()
-			coroutine.wrap(function()
-				coroutine.resume(currentCoroutine)
-			end)()
+			task.spawn(thread)
 		end)
 
 		coroutine.yield()
