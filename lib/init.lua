@@ -577,6 +577,9 @@ function Promise.all(...)
 		promises = promises[1]
 	end
 
+	return Promise._all(debug.traceback(nil, 2), promises)
+end
+
 --[=[
 	Folds an array of values or promises into a single value. The array is traversed sequentially.
 
