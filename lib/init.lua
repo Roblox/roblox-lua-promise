@@ -7,6 +7,21 @@ local ERROR_NON_LIST = "Please pass a list of promises to %s"
 local ERROR_NON_FUNCTION = "Please pass a handler function to %s!"
 local MODE_KEY_METATABLE = { __mode = "k" }
 
+local function isCallable(value)
+	if type(value) == "function" then
+		return true
+	end
+
+	if type(value) == "table" then
+		local metatable = getmetatable(value)
+		if metatable and type(rawget(metatable, "__call")) == "function" then
+			return true
+		end
+	end
+
+	return false
+end
+
 --[[
 	Creates an enum dictionary with some metamethods to prevent common mistakes.
 ]]
@@ -131,7 +146,7 @@ local function packResult(success, ...)
 end
 
 local function makeErrorHandler(traceback)
-	assert(traceback ~= nil)
+	assert(traceback ~= nil, "traceback is nil")
 
 	return function(err)
 		-- If the error object is already a table, forward it directly.
@@ -607,7 +622,7 @@ end
 ]=]
 function Promise.fold(list, reducer, initialValue)
 	assert(type(list) == "table", "Bad argument #1 to Promise.fold: must be a table")
-	assert(type(reducer) == "function", "Bad argument #2 to Promise.fold: must be a function")
+	assert(isCallable(reducer), "Bad argument #2 to Promise.fold: must be a function")
 
 	local accumulator = Promise.resolve(initialValue)
 	return Promise.each(list, function(resolvedElement, i)
@@ -857,7 +872,7 @@ end
 ]=]
 function Promise.each(list, predicate)
 	assert(type(list) == "table", string.format(ERROR_NON_LIST, "Promise.each"))
-	assert(type(predicate) == "function", string.format(ERROR_NON_FUNCTION, "Promise.each"))
+	assert(isCallable(predicate), string.format(ERROR_NON_FUNCTION, "Promise.each"))
 
 	return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
 		local results = {}
@@ -966,11 +981,11 @@ function Promise.is(object)
 		return true
 	elseif objectMetatable == nil then
 		-- No metatable, but we should still chain onto tables with andThen methods
-		return type(object.andThen) == "function"
+		return isCallable(object.andThen)
 	elseif
 		type(objectMetatable) == "table"
 		and type(rawget(objectMetatable, "__index")) == "table"
-		and type(rawget(rawget(objectMetatable, "__index"), "andThen")) == "function"
+		and isCallable(rawget(rawget(objectMetatable, "__index"), "andThen"))
 	then
 		-- Maybe this came from a different or older Promise library.
 		return true
@@ -1258,14 +1273,8 @@ end
 	@return Promise<...any>
 ]=]
 function Promise.prototype:andThen(successHandler, failureHandler)
-	assert(
-		successHandler == nil or type(successHandler) == "function" or successHandler.__call ~= nil,
-		string.format(ERROR_NON_FUNCTION, "Promise:andThen")
-	)
-	assert(
-		failureHandler == nil or type(failureHandler) == "function" or failureHandler.__call ~= nil,
-		string.format(ERROR_NON_FUNCTION, "Promise:andThen")
-	)
+	assert(successHandler == nil or isCallable(successHandler), string.format(ERROR_NON_FUNCTION, "Promise:andThen"))
+	assert(failureHandler == nil or isCallable(failureHandler), string.format(ERROR_NON_FUNCTION, "Promise:andThen"))
 
 	return self:_andThen(debug.traceback(nil, 2), successHandler, failureHandler)
 end
@@ -1291,10 +1300,7 @@ end
 	@return Promise<...any>
 ]=]
 function Promise.prototype:catch(failureHandler)
-	assert(
-		failureHandler == nil or type(failureHandler) == "function" or failureHandler.__call ~= nil,
-		string.format(ERROR_NON_FUNCTION, "Promise:catch")
-	)
+	assert(failureHandler == nil or isCallable(failureHandler), string.format(ERROR_NON_FUNCTION, "Promise:catch"))
 	return self:_andThen(debug.traceback(nil, 2), nil, failureHandler)
 end
 
@@ -1315,7 +1321,7 @@ end
 	@return Promise<...any>
 ]=]
 function Promise.prototype:tap(tapHandler)
-	assert(type(tapHandler) == "function", string.format(ERROR_NON_FUNCTION, "Promise:tap"))
+	assert(isCallable(tapHandler), string.format(ERROR_NON_FUNCTION, "Promise:tap"))
 	return self:_andThen(debug.traceback(nil, 2), function(...)
 		local callbackReturn = tapHandler(...)
 
@@ -1350,7 +1356,7 @@ end
 	@return Promise
 ]=]
 function Promise.prototype:andThenCall(callback, ...)
-	assert(type(callback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:andThenCall"))
+	assert(isCallable(callback), string.format(ERROR_NON_FUNCTION, "Promise:andThenCall"))
 	local length, values = pack(...)
 	return self:_andThen(debug.traceback(nil, 2), function()
 		return callback(unpack(values, 1, length))
@@ -1522,10 +1528,7 @@ end
 	@return Promise<...any>
 ]=]
 function Promise.prototype:finally(finallyHandler)
-	assert(
-		finallyHandler == nil or type(finallyHandler) == "function" or finallyHandler.__call ~= nill,
-		string.format(ERROR_NON_FUNCTION, "Promise:finally")
-	)
+	assert(finallyHandler == nil or isCallable(finallyHandler), string.format(ERROR_NON_FUNCTION, "Promise:finally"))
 	return self:_finally(debug.traceback(nil, 2), finallyHandler)
 end
 
@@ -1539,7 +1542,7 @@ end
 	@return Promise
 ]=]
 function Promise.prototype:finallyCall(callback, ...)
-	assert(type(callback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:finallyCall"))
+	assert(isCallable(callback), string.format(ERROR_NON_FUNCTION, "Promise:finallyCall"))
 	local length, values = pack(...)
 	return self:_finally(debug.traceback(nil, 2), function()
 		return callback(unpack(values, 1, length))
@@ -1924,7 +1927,7 @@ end
 	@return Promise<T>
 ]=]
 function Promise.retry(callback, times, ...)
-	assert(type(callback) == "function", "Parameter #1 to Promise.retry must be a function")
+	assert(isCallable(callback), "Parameter #1 to Promise.retry must be a function")
 	assert(type(times) == "number", "Parameter #2 to Promise.retry must be a number")
 
 	local args, length = { ... }, select("#", ...)
