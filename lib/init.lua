@@ -352,14 +352,14 @@ end
 	@param executor (resolve: (...: any) -> (), reject: (...: any) -> (), onCancel: (abortHandler?: () -> ()) -> boolean) -> ()
 	@return Promise
 ]=]
-function Promise.defer(callback)
+function Promise.defer(executor)
 	local traceback = debug.traceback(nil, 2)
 	local promise
 	promise = Promise._new(traceback, function(resolve, reject, onCancel)
 		local connection
 		connection = Promise._timeEvent:Connect(function()
 			connection:Disconnect()
-			local ok, _, result = runExecutor(traceback, callback, resolve, reject, onCancel)
+			local ok, _, result = runExecutor(traceback, executor, resolve, reject, onCancel)
 
 			if not ok then
 				reject(result[1])
@@ -454,8 +454,8 @@ end
 	@param ... T... -- Additional arguments passed to `callback`
 	@return Promise
 ]=]
-function Promise.try(...)
-	return Promise._try(debug.traceback(nil, 2), ...)
+function Promise.try(callback, ...)
+	return Promise._try(debug.traceback(nil, 2), callback, ...)
 end
 
 --[[
@@ -602,14 +602,14 @@ function Promise.all(...)
 	@param reducer (accumulator: U, value: T, index: number) -> U | Promise<U>
 	@param initialValue U
 ]=]
-function Promise.fold(list, callback, initialValue)
+function Promise.fold(list, reducer, initialValue)
 	assert(type(list) == "table", "Bad argument #1 to Promise.fold: must be a table")
-	assert(type(callback) == "function", "Bad argument #2 to Promise.fold: must be a function")
+	assert(type(reducer) == "function", "Bad argument #2 to Promise.fold: must be a function")
 
 	local accumulator = Promise.resolve(initialValue)
 	return Promise.each(list, function(resolvedElement, i)
 		accumulator = accumulator:andThen(function(previousValueResolved)
-			return callback(previousValueResolved, resolvedElement, i)
+			return reducer(previousValueResolved, resolvedElement, i)
 		end)
 	end):andThenReturn(accumulator)
 end
@@ -633,10 +633,10 @@ end
 	@param count number
 	@return Promise<{T}>
 ]=]
-function Promise.some(promises, amount)
-	assert(type(amount) == "number", "Bad argument #2 to Promise.some: must be a number")
+function Promise.some(promises, count)
+	assert(type(count) == "number", "Bad argument #2 to Promise.some: must be a number")
 
-	return Promise._all(debug.traceback(nil, 2), promises, amount)
+	return Promise._all(debug.traceback(nil, 2), promises, count)
 end
 
 --[=[
@@ -1287,12 +1287,12 @@ end
 	@param failureHandler (...: any) -> ...any
 	@return Promise<...any>
 ]=]
-function Promise.prototype:catch(failureCallback)
+function Promise.prototype:catch(failureHandler)
 	assert(
-		failureCallback == nil or type(failureCallback) == "function" or failureCallback.__call ~= nil,
+		failureHandler == nil or type(failureHandler) == "function" or failureHandler.__call ~= nil,
 		string.format(ERROR_NON_FUNCTION, "Promise:catch")
 	)
-	return self:_andThen(debug.traceback(nil, 2), nil, failureCallback)
+	return self:_andThen(debug.traceback(nil, 2), nil, failureHandler)
 end
 
 --[=[
@@ -1311,10 +1311,10 @@ end
 	@param tapHandler (...: any) -> ...any
 	@return Promise<...any>
 ]=]
-function Promise.prototype:tap(tapCallback)
-	assert(type(tapCallback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:tap"))
+function Promise.prototype:tap(tapHandler)
+	assert(type(tapHandler) == "function", string.format(ERROR_NON_FUNCTION, "Promise:tap"))
 	return self:_andThen(debug.traceback(nil, 2), function(...)
-		local callbackReturn = tapCallback(...)
+		local callbackReturn = tapHandler(...)
 
 		if Promise.is(callbackReturn) then
 			local length, values = pack(...)
