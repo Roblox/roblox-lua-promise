@@ -1588,7 +1588,7 @@ end
 ]]
 function Promise.prototype:done(finallyHandler)
 	assert(
-		finallyHandler == nil or type(finallyHandler) == "function" or finallyHandler.__call ~= nill,
+		finallyHandler == nil or isCallable(finallyHandler),
 		string.format(ERROR_NON_FUNCTION, "Promise:done")
 	)
 	return self:_finally(debug.traceback(nil, 2), finallyHandler, true)
@@ -1598,7 +1598,7 @@ end
 	Calls a callback on `done` with specific arguments.
 ]]
 function Promise.prototype:doneCall(callback, ...)
-	assert(type(callback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:doneCall"))
+	assert(isCallable(callback), string.format(ERROR_NON_FUNCTION, "Promise:doneCall"))
 	local length, values = pack(...)
 	return self:_finally(debug.traceback(nil, 2), function()
 		return callback(unpack(values, 1, length))
