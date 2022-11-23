@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.4.0] - 2022-11-23
+
+### Fixed
+- Support deferred Lua by remove BindableEvent usage in `await`, `awaitStatus` and `expect` to replace it with the new `task` library
+
+### Changed
+- Allow all parameters that are functions to accept a callable table too
+- Canceling a promise will close the promise thread
+
+### Added
+- Add `Promise.retryWithDelay`
+
 ## [3.3.0] - 2022-04-25
 
 ### Added
