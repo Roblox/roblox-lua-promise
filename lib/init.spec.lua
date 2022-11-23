@@ -18,7 +18,7 @@ return function()
 		end
 
 		function advanceTime(delta)
-			delta = delta or (1/60)
+			delta = delta or (1 / 60)
 
 			injectedPromiseTime = injectedPromiseTime + delta
 			timeEvent:Fire(delta)
@@ -188,7 +188,9 @@ return function()
 			expect(trace:find("nestedCall")).to.be.ok()
 			expect(trace:find("runExecutor")).to.be.ok()
 			expect(trace:find("runPlanNode")).to.be.ok()
-			expect(trace:find("...Rejected because it was chained to the following Promise, which encountered an error:")).to.be.ok()
+			expect(
+				trace:find("...Rejected because it was chained to the following Promise, which encountered an error:")
+			).to.be.ok()
 		end)
 
 		it("should report errors from Promises with _error (< v2)", function()
@@ -201,8 +203,42 @@ return function()
 
 			local trace = tostring(newPromise._values[1])
 			expect(trace:find("Sample error")).to.be.ok()
-			expect(trace:find("...Rejected because it was chained to the following Promise, which encountered an error:")).to.be.ok()
+			expect(
+				trace:find("...Rejected because it was chained to the following Promise, which encountered an error:")
+			).to.be.ok()
 			expect(trace:find("%[No stack trace available")).to.be.ok()
+		end)
+
+		it("should allow callable tables", function()
+			local promise = Promise.new(setmetatable({}, {
+				__call = function(_, resolve)
+					resolve(1)
+				end,
+			}))
+
+			local called = false
+			promise:andThen(setmetatable({}, {
+				__call = function(_, var)
+					expect(var).to.equal(1)
+					called = true
+				end,
+			}))
+
+			expect(called).to.equal(true)
+		end)
+
+		it("should close the thread after resolve", function()
+			local count = 0
+			Promise.new(function(resolve)
+				count += 1
+				resolve()
+				Promise.delay(1):await()
+				count += 1
+			end)
+
+			task.wait(1)
+
+			expect(count).to.equal(1)
 		end)
 	end)
 
@@ -249,7 +285,7 @@ return function()
 			local promise = Promise.delay(2)
 
 			Promise.delay(1):andThen(function()
-			    promise:cancel()
+				promise:cancel()
 			end)
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
@@ -352,15 +388,12 @@ return function()
 
 			local promise = Promise.resolve(5)
 
-			local chained = promise:andThen(
-				function(...)
-					argsLength, args = pack(...)
-					callCount = callCount + 1
-				end,
-				function()
-					badCallCount = badCallCount + 1
-				end
-			)
+			local chained = promise:andThen(function(...)
+				argsLength, args = pack(...)
+				callCount = callCount + 1
+			end, function()
+				badCallCount = badCallCount + 1
+			end)
 
 			expect(badCallCount).to.equal(0)
 
@@ -386,15 +419,12 @@ return function()
 
 			local promise = Promise.reject(5)
 
-			local chained = promise:andThen(
-				function(...)
-					badCallCount = badCallCount + 1
-				end,
-				function(...)
-					argsLength, args = pack(...)
-					callCount = callCount + 1
-				end
-			)
+			local chained = promise:andThen(function(...)
+				badCallCount = badCallCount + 1
+			end, function(...)
+				argsLength, args = pack(...)
+				callCount = callCount + 1
+			end)
 
 			expect(badCallCount).to.equal(0)
 
@@ -441,16 +471,13 @@ return function()
 				startResolution = resolve
 			end)
 
-			local chained = promise:andThen(
-				function(...)
-					args = {...}
-					argsLength = select("#", ...)
-					callCount = callCount + 1
-				end,
-				function()
-					badCallCount = badCallCount + 1
-				end
-			)
+			local chained = promise:andThen(function(...)
+				args = { ... }
+				argsLength = select("#", ...)
+				callCount = callCount + 1
+			end, function()
+				badCallCount = badCallCount + 1
+			end)
 
 			expect(callCount).to.equal(0)
 			expect(badCallCount).to.equal(0)
@@ -484,16 +511,13 @@ return function()
 				startResolution = reject
 			end)
 
-			local chained = promise:andThen(
-				function()
-					badCallCount = badCallCount + 1
-				end,
-				function(...)
-					args = {...}
-					argsLength = select("#", ...)
-					callCount = callCount + 1
-				end
-			)
+			local chained = promise:andThen(function()
+				badCallCount = badCallCount + 1
+			end, function(...)
+				args = { ... }
+				argsLength = select("#", ...)
+				callCount = callCount + 1
+			end)
 
 			expect(callCount).to.equal(0)
 			expect(badCallCount).to.equal(0)
@@ -520,9 +544,7 @@ return function()
 			local x, y, z
 			Promise.new(function(resolve, reject)
 				reject(1, 2, 3)
-			end)
-			:andThen(function() end)
-			:catch(function(a, b, c)
+			end):andThen(function() end):catch(function(a, b, c)
 				x, y, z = a, b, c
 			end)
 
@@ -530,17 +552,43 @@ return function()
 			expect(y).to.equal(2)
 			expect(z).to.equal(3)
 		end)
+
+		-- this test is currently disabled while we port over the changes to `andThen` from upstream
+		itSKIP("should not call queued callbacks from a cancelled sub-promise", function()
+			local resolve
+			local count = 0
+
+			local root = Promise.new(function(r)
+				resolve = r
+			end)
+
+			root:andThen(function()
+				count += 1
+			end)
+
+			root
+				:andThen(function()
+					count += 1
+				end)
+				:cancel()
+
+			resolve("foo")
+
+			expect(count).to.equal(1)
+		end)
 	end)
 
 	describe("Promise:cancel", function()
 		it("should mark promises as cancelled and not resolve or reject them", function()
 			local callCount = 0
 			local finallyCallCount = 0
-			local promise = Promise.new(function() end):andThen(function()
-				callCount = callCount + 1
-			end):finally(function()
-				finallyCallCount = finallyCallCount + 1
-			end)
+			local promise = Promise.new(function() end)
+				:andThen(function()
+					callCount = callCount + 1
+				end)
+				:finally(function()
+					finallyCallCount = finallyCallCount + 1
+				end)
 
 			promise:cancel()
 			promise:cancel() -- Twice to check call counts
@@ -600,7 +648,9 @@ return function()
 		it("should track consumers", function()
 			local pending = Promise.new(function() end)
 			local p0 = Promise.resolve()
-			local p1 = p0:finally(function() return pending end)
+			local p1 = p0:andThen(function()
+				return pending
+			end)
 			local p2 = Promise.new(function(resolve)
 				resolve(p1)
 			end)
@@ -624,6 +674,20 @@ return function()
 			expect(p1._status).to.equal(Promise.Status.Cancelled)
 			expect(p2._status).to.equal(Promise.Status.Cancelled)
 		end)
+
+		it("should close the promise thread", function()
+			local count = 0
+			local promise = Promise.new(function()
+				count += 1
+				Promise.delay(1):await()
+				count += 1
+			end)
+
+			promise:cancel()
+			advanceTime(2)
+
+			expect(count).to.equal(1)
+		end)
 	end)
 
 	describe("Promise:finally", function()
@@ -640,9 +704,7 @@ return function()
 			end):finally(finally)
 
 			-- Chained promise
-			Promise.resolve():andThen(function()
-
-			end):finally(finally):finally(finally)
+			Promise.resolve():andThen(function() end):finally(finally):finally(finally)
 
 			-- Rejected promise
 			Promise.reject():finally(finally)
@@ -653,24 +715,151 @@ return function()
 			expect(callCount).to.equal(5)
 		end)
 
-		it("should be a child of the parent Promise", function()
-			local p1 = Promise.new(function() end)
-			local p2 = p1:finally(function() end)
-
-			expect(p2._parent).to.equal(p1)
-			expect(p1._consumers[p2]).to.equal(true)
-		end)
-
-		it("should forward return values", function()
+		-- this test is currently disabled while we port over the changes to `finally` from upstream
+		itSKIP("should not forward return values", function()
 			local value
 
-			Promise.resolve():finally(function()
-				return 1
-			end):andThen(function(v)
-				value = v
+			Promise.resolve(2)
+				:finally(function()
+					return 1
+				end)
+				:andThen(function(v)
+					value = v
+				end)
+
+			expect(value).to.equal(2)
+		end)
+
+		-- this test is currently disabled while we port over the changes to `finally` from upstream
+		itSKIP("should not consume rejections", function()
+			local catchRan = false
+			local thenRan = false
+			Promise.reject(5)
+				:finally(function()
+					return 42
+				end)
+				:andThen(function()
+					thenRan = true
+				end)
+				:catch(function(value)
+					catchRan = true
+					expect(value).to.equal(5)
+				end)
+
+			expect(catchRan).to.equal(true)
+			expect(thenRan).to.equal(false)
+		end)
+
+		-- this test is currently disabled while we port over the changes to `finally` from upstream
+		itSKIP("should wait for returned promises", function()
+			local resolve
+			local promise = Promise.reject("foo"):finally(function()
+				return Promise.new(function(r)
+					resolve = r
+				end)
 			end)
 
-			expect(value).to.equal(1)
+			expect(promise:getStatus()).to.equal(Promise.Status.Started)
+
+			resolve()
+
+			expect(promise:getStatus()).to.equal(Promise.Status.Rejected)
+			local _, value = promise:_unwrap()
+			expect(value).to.equal("foo")
+		end)
+
+		it("should reject with a returned rejected promise's value", function()
+			local reject
+			local promise = Promise.reject("foo"):finally(function()
+				return Promise.new(function(_, r)
+					reject = r
+				end)
+			end)
+
+			expect(promise:getStatus()).to.equal(Promise.Status.Started)
+
+			reject("bar")
+
+			expect(promise:getStatus()).to.equal(Promise.Status.Rejected)
+			local _, value = promise:_unwrap()
+			expect(value).to.equal("bar")
+		end)
+
+		it("should reject when handler errors", function()
+			local errorValue = {}
+			local promise = Promise.reject("bar"):finally(function()
+				error(errorValue)
+			end)
+
+			local ok, value = promise:_unwrap()
+
+			expect(ok).to.equal(false)
+			expect(value).to.equal(errorValue)
+		end)
+
+		-- this test is currently disabled while we port over the changes to `finally` from upstream
+		itSKIP("should not prevent cancellation", function()
+			local promise = Promise.new(function() end)
+
+			local finallyRan = false
+			promise:finally(function()
+				finallyRan = true
+			end)
+
+			local consumer = promise:andThen(function() end)
+
+			consumer:cancel()
+
+			expect(promise:getStatus()).to.equal(Promise.Status.Cancelled)
+			expect(finallyRan).to.equal(true)
+		end)
+
+		it("should propagate cancellation downwards", function()
+			local finallyRan = false
+			local andThenRan = false
+			local root = Promise.new(function() end)
+
+			local consumer = root:finally(function()
+				finallyRan = true
+			end)
+
+			root:cancel()
+
+			expect(root:getStatus()).to.equal(Promise.Status.Cancelled)
+			expect(consumer:getStatus()).to.equal(Promise.Status.Cancelled)
+
+			expect(finallyRan).to.equal(true)
+			expect(andThenRan).to.equal(false)
+		end)
+
+		it("should propagate cancellation upwards", function()
+			local finallyRan = false
+			local andThenRan = false
+			local root = Promise.new(function() end)
+
+			local consumer = root:finally(function()
+				finallyRan = true
+			end)
+
+			consumer:cancel()
+
+			expect(root:getStatus()).to.equal(Promise.Status.Cancelled)
+			expect(consumer:getStatus()).to.equal(Promise.Status.Cancelled)
+
+			expect(finallyRan).to.equal(true)
+			expect(andThenRan).to.equal(false)
+		end)
+
+		it("should cancel returned promise if cancelled", function()
+			local internal = Promise.new(function() end)
+
+			local promise = Promise.resolve():finally(function()
+				return internal
+			end)
+
+			promise:cancel()
+
+			expect(internal:getStatus()).to.equal(Promise.Status.Cancelled)
 		end)
 	end)
 
@@ -693,7 +882,7 @@ return function()
 
 		it("should error if given non-promise values", function()
 			expect(function()
-				Promise.all({{}, {}, {}})
+				Promise.all({ {}, {}, {} })
 			end).to.throw()
 		end)
 
@@ -706,7 +895,7 @@ return function()
 
 			for i = 1, testValuesLength do
 				promises[i] = Promise.new(function(resolve)
-					resolveFunctions[i] = {resolve, testValues[i]}
+					resolveFunctions[i] = { resolve, testValues[i] }
 				end)
 			end
 
@@ -742,7 +931,7 @@ return function()
 				resolveB = resolve
 			end)
 
-			local combinedPromise = Promise.all({a, b})
+			local combinedPromise = Promise.all({ a, b })
 
 			expect(combinedPromise:getStatus()).to.equal(Promise.Status.Started)
 
@@ -771,7 +960,7 @@ return function()
 				resolveB = resolve
 			end)
 
-			local combinedPromise = Promise.all({a, b})
+			local combinedPromise = Promise.all({ a, b })
 
 			expect(combinedPromise:getStatus()).to.equal(Promise.Status.Started)
 
@@ -799,7 +988,7 @@ return function()
 				rejectB = reject
 			end)
 
-			local combinedPromise = Promise.all({a, b})
+			local combinedPromise = Promise.all({ a, b })
 
 			expect(combinedPromise:getStatus()).to.equal(Promise.Status.Started)
 
@@ -819,21 +1008,21 @@ return function()
 		end)
 
 		-- Temporarily turns this test off to allow non array parameter for compatibility reason.
--- 		it("should error if a non-array table is passed in", function()
--- 			local ok, err = pcall(function()
--- 				Promise.all(Promise.new(function() end))
--- 			end)
+		itSKIP("should error if a non-array table is passed in", function()
+			local ok, err = pcall(function()
+				Promise.all(Promise.new(function() end))
+			end)
 
--- 			expect(ok).to.be.ok()
--- 			expect(err:find("Non%-promise")).to.be.ok()
--- 		end)
+			expect(ok).to.be.ok()
+			expect(err:find("Non%-promise")).to.be.ok()
+		end)
 
 		it("should cancel pending promises if one rejects", function()
 			local p = Promise.new(function() end)
 			expect(Promise.all({
 				Promise.resolve(),
 				Promise.reject(),
-				p
+				p,
 			}):getStatus()).to.equal(Promise.Status.Rejected)
 			expect(p:getStatus()).to.equal(Promise.Status.Cancelled)
 		end)
@@ -845,7 +1034,7 @@ return function()
 			local promises = {
 				Promise.new(function() end),
 				Promise.new(function() end),
-				p
+				p,
 			}
 
 			Promise.all(promises):cancel()
@@ -869,16 +1058,23 @@ return function()
 		end)
 
 		it("should accept promises in the list", function()
-			local sum = Promise.fold({Promise.resolve(1), 2, 3}, function(sum, element)
+			local resolve
+
+			local sum = Promise.fold({ Promise.new(function(r)
+				resolve = r
+			end), 2, 3 }, function(sum, element)
 				return sum + element
 			end, 0)
+
+			resolve(1)
+
 			expect(Promise.is(sum)).to.equal(true)
 			expect(sum:getStatus()).to.equal(Promise.Status.Resolved)
 			expect(sum:expect()).to.equal(6)
 		end)
 
 		it("should always return a promise even if the list or reducer don't use them", function()
-			local sum = Promise.fold({1, 2, 3}, function(sum, element, index)
+			local sum = Promise.fold({ 1, 2, 3 }, function(sum, element, index)
 				if index == 2 then
 					return Promise.delay(1):andThenReturn(sum + element)
 				else
@@ -894,7 +1090,7 @@ return function()
 
 		it("should return the first rejected promise", function()
 			local errorMessage = "foo"
-			local sum = Promise.fold({1, 2, 3}, function(sum, element, index)
+			local sum = Promise.fold({ 1, 2, 3 }, function(sum, element, index)
 				if index == 2 then
 					return Promise.reject(errorMessage)
 				else
@@ -909,14 +1105,14 @@ return function()
 
 		it("should return the first canceled promise", function()
 			local secondPromise
-			local sum = Promise.fold({1, 2, 3}, function(sum, element, index)
+			local sum = Promise.fold({ 1, 2, 3 }, function(sum, element, index)
 				if index == 1 then
 					return sum + element
 				elseif index == 2 then
 					secondPromise = Promise.delay(1):andThenReturn(sum + element)
 					return secondPromise
 				else
-					error('this should not run if the promise is cancelled')
+					error("this should not run if the promise is cancelled")
 				end
 			end, 0)
 			expect(Promise.is(sum)).to.equal(true)
@@ -930,7 +1126,7 @@ return function()
 		it("should resolve with the first settled value", function()
 			local promise = Promise.race({
 				Promise.resolve(1),
-				Promise.resolve(2)
+				Promise.resolve(2),
 			}):andThen(function(value)
 				expect(value).to.equal(1)
 			end)
@@ -946,7 +1142,7 @@ return function()
 				Promise.new(function() end),
 				Promise.new(function(resolve)
 					resolve(2)
-				end)
+				end),
 			}
 
 			local promise = Promise.race(promises)
@@ -961,7 +1157,7 @@ return function()
 			expect(Promise.race({
 				Promise.reject(),
 				Promise.resolve(),
-				p
+				p,
 			}):getStatus()).to.equal(Promise.Status.Rejected)
 			expect(p:getStatus()).to.equal(Promise.Status.Cancelled)
 		end)
@@ -982,7 +1178,7 @@ return function()
 			local promises = {
 				Promise.new(function() end),
 				Promise.new(function() end),
-				p
+				p,
 			}
 
 			Promise.race(promises):cancel()
@@ -1010,9 +1206,9 @@ return function()
 
 		it("should catch errors after a yield", function()
 			local bindable = Instance.new("BindableEvent")
-			local test = Promise.promisify(function ()
+			local test = Promise.promisify(function()
 				bindable.Event:Wait()
-				error('errortext')
+				error("errortext")
 			end)
 
 			local promise = test()
@@ -1072,7 +1268,7 @@ return function()
 		it("should catch synchronous errors", function()
 			local errorText
 			Promise.try(function()
-				error('errortext')
+				error("errortext")
 			end):catch(function(e)
 				errorText = tostring(e)
 			end)
@@ -1094,7 +1290,7 @@ return function()
 			local bindable = Instance.new("BindableEvent")
 			local promise = Promise.try(function()
 				bindable.Event:Wait()
-				error('errortext')
+				error("errortext")
 			end)
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
@@ -1190,7 +1386,7 @@ return function()
 			local p = Promise.some({
 				Promise.resolve(1),
 				Promise.reject(),
-				Promise.resolve(2)
+				Promise.resolve(2),
 			}, 2)
 			expect(p:getStatus()).to.equal(Promise.Status.Resolved)
 			expect(p._values[1][1]).to.equal(1)
@@ -1200,13 +1396,15 @@ return function()
 		it("should error if the goal can't be reached", function()
 			expect(Promise.some({
 				Promise.resolve(),
-				Promise.reject()
+				Promise.reject(),
 			}, 2):getStatus()).to.equal(Promise.Status.Rejected)
 
 			local reject
 			local p = Promise.some({
 				Promise.resolve(),
-				Promise.new(function(_, r) reject = r end)
+				Promise.new(function(_, r)
+					reject = r
+				end),
 			}, 2)
 
 			expect(p:getStatus()).to.equal(Promise.Status.Started)
@@ -1218,12 +1416,14 @@ return function()
 		it("should cancel pending Promises once the goal is reached", function()
 			local resolve
 			local pending1 = Promise.new(function() end)
-			local pending2 = Promise.new(function(r) resolve = r end)
+			local pending2 = Promise.new(function(r)
+				resolve = r
+			end)
 
 			local some = Promise.some({
 				pending1,
 				pending2,
-				Promise.resolve()
+				Promise.resolve(),
 			}, 2)
 
 			expect(some:getStatus()).to.equal(Promise.Status.Started)
@@ -1245,7 +1445,7 @@ return function()
 
 		it("should return an empty array if amount is 0", function()
 			local p = Promise.some({
-				Promise.resolve(2)
+				Promise.resolve(2),
 			}, 0)
 
 			expect(p:getStatus()).to.equal(Promise.Status.Resolved)
@@ -1273,7 +1473,7 @@ return function()
 			local promises = {
 				Promise.new(function() end),
 				Promise.new(function() end),
-				p
+				p,
 			}
 
 			Promise.some(promises, 3):cancel()
@@ -1288,7 +1488,7 @@ return function()
 				local p = Promise.any({
 					Promise.reject(),
 					Promise.reject(),
-					Promise.resolve(1)
+					Promise.resolve(1),
 				})
 
 				expect(p:getStatus()).to.equal(Promise.Status.Resolved)
@@ -1312,7 +1512,9 @@ return function()
 				Promise.resolve(),
 				Promise.reject(),
 				Promise.resolve(),
-				Promise.new(function(_, r) reject = r end)
+				Promise.new(function(_, r)
+					reject = r
+				end),
 			})
 
 			expect(p:getStatus()).to.equal(Promise.Status.Started)
@@ -1331,7 +1533,7 @@ return function()
 			local promises = {
 				Promise.new(function() end),
 				Promise.new(function() end),
-				p
+				p,
 			}
 
 			Promise.allSettled(promises):cancel()
@@ -1353,6 +1555,18 @@ return function()
 			expect(c).to.equal(6)
 			expect(d).to.equal(nil)
 			expect(e).to.equal(7)
+		end)
+
+		it("should work if yielding is needed", function()
+			local ran = false
+			task.spawn(function()
+				local _, actualTime = Promise.delay(1):await()
+				expect(type(actualTime)).to.equal("number")
+				ran = true
+			end)
+
+			advanceTime(2)
+			expect(ran).to.equal(true)
 		end)
 	end)
 
@@ -1396,9 +1610,12 @@ return function()
 	describe("Promise.each", function()
 		it("should iterate", function()
 			local ok, result = Promise.each({
-				"foo", "bar", "baz", "qux"
+				"foo",
+				"bar",
+				"baz",
+				"qux",
 			}, function(...)
-				return {...}
+				return { ... }
 			end):_unwrap()
 
 			expect(ok).to.equal(true)
@@ -1417,7 +1634,9 @@ return function()
 			local callCounts = {}
 
 			local promise = Promise.each({
-				"foo", "bar", "baz"
+				"foo",
+				"bar",
+				"baz",
 			}, function(value, index)
 				callCounts[index] = (callCounts[index] or 0) + 1
 
@@ -1462,7 +1681,7 @@ return function()
 		end)
 
 		it("should reject with the value if the predicate promise rejects", function()
-			local promise = Promise.each({1, 2, 3}, function()
+			local promise = Promise.each({ 1, 2, 3 }, function()
 				return Promise.reject("foobar")
 			end)
 
@@ -1477,7 +1696,7 @@ return function()
 			end)
 
 			local promise = Promise.each({
-				innerPromise
+				innerPromise,
 			}, function(value)
 				return value * 2
 			end)
@@ -1492,7 +1711,7 @@ return function()
 
 		it("should reject with the value if a Promise from the list rejects", function()
 			local called = false
-			local promise = Promise.each({1, 2, Promise.reject("foobar")}, function(value)
+			local promise = Promise.each({ 1, 2, Promise.reject("foobar") }, function(value)
 				called = true
 				return "never"
 			end)
@@ -1507,7 +1726,7 @@ return function()
 			cancelled:cancel()
 
 			local called = false
-			local promise = Promise.each({1, 2, cancelled}, function()
+			local promise = Promise.each({ 1, 2, cancelled }, function()
 				called = true
 			end)
 
@@ -1520,13 +1739,13 @@ return function()
 			local callCounts = {}
 
 			local promise = Promise.each({
-				"foo", "bar", "baz"
+				"foo",
+				"bar",
+				"baz",
 			}, function(value, index)
 				callCounts[index] = (callCounts[index] or 0) + 1
 
-				return Promise.new(function()
-
-				end)
+				return Promise.new(function() end)
 			end)
 
 			expect(promise:getStatus()).to.equal(Promise.Status.Started)
@@ -1544,10 +1763,11 @@ return function()
 			local innerPromise
 
 			local promise = Promise.each({
-				"foo", "bar", "baz"
+				"foo",
+				"bar",
+				"baz",
 			}, function(value, index)
-				innerPromise = Promise.new(function()
-				end)
+				innerPromise = Promise.new(function() end)
 				return innerPromise
 			end)
 
@@ -1559,7 +1779,7 @@ return function()
 		it("should cancel Promises in the list if Promise.each is cancelled", function()
 			local innerPromise = Promise.new(function() end)
 
-			local promise = Promise.each({innerPromise}, function() end)
+			local promise = Promise.each({ innerPromise }, function() end)
 
 			promise:cancel()
 
@@ -1645,7 +1865,7 @@ return function()
 			local obj = {
 				andThen = function()
 					return 1
-				end
+				end,
 			}
 
 			expect(Promise.is(obj)).to.equal(true)
@@ -1656,9 +1876,7 @@ return function()
 			OldPromise.prototype = {}
 			OldPromise.__index = OldPromise.prototype
 
-			function OldPromise.prototype:andThen()
-
-			end
+			function OldPromise.prototype:andThen() end
 
 			local oldPromise = setmetatable({}, OldPromise)
 
