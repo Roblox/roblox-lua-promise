@@ -1,0 +1,3 @@
+[tools]
+wally = { source = "UpliftGames/wally", version = "0.3.2" }
+rotrieve = { source = "roblox/rotriever", version = "=0.5.26" }
