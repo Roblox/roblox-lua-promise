@@ -6,6 +6,10 @@ local ERROR_NON_PROMISE_IN_LIST = "Non-promise value passed into %s at index %s"
 local ERROR_NON_LIST = "Please pass a list of promises to %s"
 local ERROR_NON_FUNCTION = "Please pass a handler function to %s!"
 local MODE_KEY_METATABLE = { __mode = "k" }
+local Packages = script.Parent
+local SafeFlags = require(Packages.SafeFlags)
+
+local FFlagReducePromiseTaskDefer = SafeFlags.createGetFFlag("ReducePromiseTaskDefer")()
 
 local function isCallable(value)
 	if type(value) == "function" then
@@ -1929,9 +1933,13 @@ do
 			self._consumers = nil
 		end
 
-		table.insert(threadsToClose, self._thread)
-		if not closingTask then
-			closingTask = task.defer(closeThreads)
+		if FFlagReducePromiseTaskDefer then
+			table.insert(threadsToClose, self._thread)
+			if not closingTask then
+				closingTask = task.defer(closeThreads)
+			end
+		else
+			task.defer(coroutine.close, self._thread)
 		end
 	end
 end
