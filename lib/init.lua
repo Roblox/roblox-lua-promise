@@ -6,10 +6,12 @@ local ERROR_NON_PROMISE_IN_LIST = "Non-promise value passed into %s at index %s"
 local ERROR_NON_LIST = "Please pass a list of promises to %s"
 local ERROR_NON_FUNCTION = "Please pass a handler function to %s!"
 local MODE_KEY_METATABLE = { __mode = "k" }
-local Packages = script.Parent
-local SafeFlags = require(Packages.SafeFlags)
 
-local FFlagReducePromiseTaskDefer = SafeFlags.createGetFFlag("ReducePromiseTaskDefer")()
+local success, FFlagReducePromiseTaskDefer = pcall(game.DefineFastFlag, game, "ReducePromiseTaskDefer", false)
+
+if not success then
+	FFlagReducePromiseTaskDefer = false
+end
 
 local function isCallable(value)
 	if type(value) == "function" then
