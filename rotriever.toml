@@ -5,3 +5,6 @@ authors = ["evaera"]
 license = "MIT"
 content_root = "lib"
 files = ["*.lua", "!*.spec.lua"]
+
+[config]
+registry_index = true
