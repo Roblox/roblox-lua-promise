@@ -1,0 +1,7 @@
+# If present, use rotriever.toml in the repo to publish.
+[rotriever]
+publish_to = true
+
+# If present, use wally.toml in the repo to publish.
+[wally]
+publish_to = true

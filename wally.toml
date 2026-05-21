@@ -1,8 +1,11 @@
 [package]
 name = "roblox/promise"
-version = "3.5.0"
-registry = "https://github.com/UpliftGames/wally-index"
-realm = "shared"
+description = "An implementation of Promise similar to Promise/A+."
+version = "3.5.1"
 license = "MIT"
+authors = ["evaera"]
+realm = "shared"
+registry = "https://github.com/UpliftGames/wally-index"
+repository = "https://github.com/Roblox/roblox-lua-promise"
 
 [dependencies]
