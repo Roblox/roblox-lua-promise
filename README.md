@@ -1,5 +1,8 @@
 <div align="center">
 	<h1>Roblox Lua Promise</h1>
+	<p>
+		<a href="https://wally.run/package/roblox/promise"><img src="./.github/assets/link-wally.svg" alt="Wally"></a>
+	</p>
 	<p>An implementation of <code>Promise</code> similar to Promise/A+.</p>
 	<a href="https://eryn.io/roblox-lua-promise/"><strong>View docs</strong></a>
 </div>
