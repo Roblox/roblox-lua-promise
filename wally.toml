@@ -1,11 +1,23 @@
 [package]
 name = "roblox/promise"
 description = "An implementation of Promise similar to Promise/A+."
-version = "3.5.1"
+version = "3.5.2"
 license = "MIT"
 authors = ["evaera"]
 realm = "shared"
 registry = "https://github.com/UpliftGames/wally-index"
 repository = "https://github.com/Roblox/roblox-lua-promise"
+exclude = [
+    "CHANGELOG.md",
+    "foreman.toml",
+    "modules",
+    "multipack.toml",
+    "package-lock.json",
+    "package.json",
+    "rotriever.toml",
+    "runTests.server.lua",
+    "test.project.json",
+    "lib/*.spec.lua",
+]
 
 [dependencies]
