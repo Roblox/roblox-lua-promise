@@ -18,6 +18,8 @@ exclude = [
     "runTests.server.lua",
     "test.project.json",
     "lib/*.spec.lua",
+    "pkg.luau",
+    "pkg.lock.luau",
 ]
 
 [dependencies]
