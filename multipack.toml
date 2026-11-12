@@ -5,3 +5,7 @@ publish_to = true
 # If present, use wally.toml in the repo to publish.
 [wally]
 publish_to = true
+
+# If present, use pkg.luau in the repo to publish.
+[lpm]
+publish_to = true
